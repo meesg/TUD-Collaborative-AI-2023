@@ -50,6 +50,10 @@ class BaselineAgent(ArtificialBrain):
         self._foundVictims = []
         self._collectedVictims = []
         self._foundVictimLocs = {}
+        self._robotSearchedRooms = []
+        self._robotFoundVictims = []
+        self._robotCollectedVictims = []
+        self._robotFoundVictimLocs = {}
         self._sendMessages = []
         self._currentDoor = None
         self._teamMembers = []
@@ -70,11 +74,14 @@ class BaselineAgent(ArtificialBrain):
         self._recentVic = None
         self._receivedMessages = []
         self._moving = False
+        self._trustBeliefs = {}
+        self._processedMessages = 0
 
     def initialize(self):
-        # Initialization of the state tracker and navigation algorithm
+        # Initialization of the state tracker, navigation algorithm and trust beliefs
         self._state_tracker = StateTracker(agent_id=self.agent_id)
         self._navigator = Navigator(agent_id=self.agent_id,action_set=self.action_set, algorithm=Navigator.A_STAR_ALGORITHM)
+        self._loadBelief(self._teamMembers, self._folder)
 
     def filter_observations(self, state):
         # Filtering of the world state before deciding on an action 
@@ -93,9 +100,8 @@ class BaselineAgent(ArtificialBrain):
                     self._receivedMessages.append(mssg.content)
         # Process messages from team members
         self._processMessages(state, self._teamMembers, self._condition)
-        # Initialize and update trust beliefs for team members
-        trustBeliefs = self._loadBelief(self._teamMembers, self._folder)
-        self._trustBelief(self._teamMembers, trustBeliefs, self._folder, self._receivedMessages)
+        # Update trust beliefs for team members
+        self._trustBelief(self._teamMembers, self._folder, self._receivedMessages)
 
         # Check whether human is close in distance
         if state[{'is_human_agent': True}]:
@@ -142,7 +148,7 @@ class BaselineAgent(ArtificialBrain):
                 Each critical victim (critically injured girl/critically injured elderly woman/critically injured man/critically injured dog) adds 6 points to our score, \
                 each mild victim (mildly injured boy/mildly injured elderly man/mildly injured woman/mildly injured cat) 3 points. \
                 If you are ready to begin our mission, you can simply start moving.', 'RescueBot')
-                # Wait untill the human starts moving before going to the next phase, otherwise remain idle
+                # Wait until the human starts moving before going to the next phase, otherwise remain idle
                 if not state[{'is_human_agent': True}]:
                     self._phase = Phase.FIND_NEXT_GOAL
                 else:
@@ -769,8 +775,6 @@ class BaselineAgent(ArtificialBrain):
         '''
         Loads trust belief values if agent already collaborated with human before, otherwise trust belief values are initialized using default values.
         '''
-        # Create a dictionary with trust values for all team members
-        trustBeliefs = {}
         # Set a default starting trust value
         default = 0.5
         trustfile_header = []
@@ -787,32 +791,33 @@ class BaselineAgent(ArtificialBrain):
                     name = row[0]
                     competence = float(row[1])
                     willingness = float(row[2])
-                    trustBeliefs[name] = {'competence': competence, 'willingness': willingness}
+                    self._trustBeliefs[name] = {'competence': competence, 'willingness': willingness}
                 # Initialize default trust values
                 if row and row[0]!=self._humanName:
                     competence = default
                     willingness = default
-                    trustBeliefs[self._humanName] = {'competence': competence, 'willingness': willingness}
-        return trustBeliefs
+                    self._trustBeliefs[self._humanName] = {'competence': competence, 'willingness': willingness}
 
-    def _trustBelief(self, members, trustBeliefs, folder, receivedMessages):
+    def _trustBelief(self, members, folder, receivedMessages):
         '''
         Baseline implementation of a trust belief. Creates a dictionary with trust belief scores for each team member, for example based on the received messages.
         '''
-        # Update the trust value based on for example the received messages
-        for message in receivedMessages:
+        # Update the trust value based on new incoming messages
+        for message in receivedMessages[self._processedMessages:]:
+            print(message)
             # Increase agent trust in a team member that rescued a victim
-            if 'Collect' in message:
-                trustBeliefs[self._humanName]['competence']+=0.10
-                # Restrict the competence belief to a range of -1 to 1
-                trustBeliefs[self._humanName]['competence'] = np.clip(trustBeliefs[self._humanName]['competence'], -1, 1)
+            if 'Found' in message:
+                self._trustBeliefs[self._humanName]['competence'] += 0.1
+                print(self._trustBeliefs[self._humanName]['competence'])
+        # Update the amount of processed messages
+        self._processedMessages = len(receivedMessages)
+        # Restrict the competence belief to a range of -1 to 1
+        self._trustBeliefs[self._humanName]['competence'] = np.clip(self._trustBeliefs[self._humanName]['competence'], -1, 1)
         # Save current trust belief values so we can later use and retrieve them to add to a csv file with all the logged trust belief values
         with open(folder + '/beliefs/currentTrustBelief.csv', mode='w') as csv_file:
             csv_writer = csv.writer(csv_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerow(['name','competence','willingness'])
-            csv_writer.writerow([self._humanName,trustBeliefs[self._humanName]['competence'],trustBeliefs[self._humanName]['willingness']])
-
-        return trustBeliefs
+            csv_writer.writerow([self._humanName,self._trustBeliefs[self._humanName]['competence'],self._trustBeliefs[self._humanName]['willingness']])
 
     def _sendMessage(self, mssg, sender):
         '''
