@@ -474,6 +474,10 @@ class BaselineAgent(ArtificialBrain):
                             if vic not in self._roomVics:
                                 self._roomVics.append(vic)
 
+                            if vic in self._collectedVictims:
+                                self._trustBeliefs[self._humanName]['competence'] -= 0.2
+                                self._trustBeliefs[self._humanName]['willingness'] -= 0.1
+
                             # Identify the exact location of the victim that was found by the human earlier
                             if vic in self._foundVictims and 'location' not in self._foundVictimLocs[vic].keys():
                                 self._recentVic = vic
@@ -818,18 +822,56 @@ class BaselineAgent(ArtificialBrain):
         '''
         Baseline implementation of a trust belief. Creates a dictionary with trust belief scores for each team member, for example based on the received messages.
         '''
-        print("====================================")
-        print(str(self._robotSearchedRooms))
-        print(str(self._robotFoundVictims))
-        print(str(self._robotCollectedVictims))
-        print(str(self._robotFoundVictimLocs))
+        # print("====================================")
+        # print(str(self._robotSearchedRooms))
+        # print(str(self._robotFoundVictims))
+        # print(str(self._robotCollectedVictims))
+        # print(str(self._robotFoundVictimLocs))
         # Update the trust value based on new incoming messages
         for message in receivedMessages[self._processedMessages:]:
             print(message)
             # Increase agent trust in a team member that rescued a victim
-            if 'Found' in message:
-                self._trustBeliefs[self._humanName]['competence'] += 0.1
-                print(self._trustBeliefs[self._humanName]['competence'])
+            # if 'Found' in message:
+            #     self._trustBeliefs[self._humanName]['competence'] += 0.1
+            #     print(self._trustBeliefs[self._humanName]['competence'])
+            if message.startswith("Found:"):
+                # Identify which victim and area it concerns
+                if len(message.split()) == 6:
+                    foundVic = ' '.join(message.split()[1:4])
+                else:
+                    foundVic = ' '.join(message.split()[1:5])
+                loc = 'area ' + message.split()[-1]
+                print("loc: " + loc)
+                print("victim: " + foundVic)
+                if foundVic in self._collectedVictims:
+                    self._trustBeliefs[self._humanName]['willingness'] -= 0.2
+                    print("case 1")
+                if foundVic in self._robotFoundVictims and self._robotFoundVictimLocs[foundVic]['room'] != loc:
+                    self._trustBeliefs[self._humanName]['willingness'] -= 0.2
+                    print("case 2")
+
+            if message.startswith("Collect:"):
+                # Identify which victim and area it concerns
+                if len(message.split()) == 6:
+                    collectVic = ' '.join(message.split()[1:4])
+                else:
+                    collectVic = ' '.join(message.split()[1:5])
+                loc = 'area ' + message.split()[-1]
+                print("loc: " + loc)
+                print("victim: " + collectVic)
+                if collectVic in self._robotCollectedVictims:
+                    self._trustBeliefs[self._humanName]['willingness'] -= 0.2
+
+            if message.startswith("Remove:"):
+                # Identify at which location the human needs help
+                loc = 'area ' + message.split()[-1]
+                if loc in self._robotSearchedRooms:
+                    self._trustBeliefs[self._humanName]['willingness'] -= 0.2
+
+            print("Trust beliefs of the human:")
+            print("Competence: " + str(self._trustBeliefs[self._humanName]['competence']))
+            print("Willingness: " + str(self._trustBeliefs[self._humanName]['willingness']))
+
         # Update the amount of processed messages
         self._processedMessages = len(receivedMessages)
         # Restrict the competence belief to a range of -1 to 1
