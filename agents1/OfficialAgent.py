@@ -130,6 +130,8 @@ class BaselineAgent(ArtificialBrain):
                 # If victim is being carried, add to collected victims memory
                 if info['is_carrying'][0]['img_name'][8:-4] not in self._collectedVictims:
                     self._collectedVictims.append(info['is_carrying'][0]['img_name'][8:-4])
+                if info['is_carrying'][0]['img_name'][8:-4] not in self._robotCollectedVictims:
+                    self._robotCollectedVictims.append(info['is_carrying'][0]['img_name'][8:-4])
                 self._carryingTogether = True
             if 'is_human_agent' in info and self._humanName in info['name'] and len(info['is_carrying']) == 0:
                 self._carryingTogether = False
@@ -503,7 +505,15 @@ class BaselineAgent(ArtificialBrain):
                                     self._sendMessage('Found ' + vic + ' in ' + self._door['room_name'] + '. Please decide whether to "Rescue" or "Continue" searching. \n\n \
                                         Important features to consider are: \n explore - areas searched: area ' + str(self._searchedRooms).replace('area','') + ' \n safe - victims rescued: ' + str(self._collectedVictims) + '\n \
                                         afstand - distance between us: ' + self._distanceHuman,'RescueBot')
-                                    self._waiting = True    
+                                    self._waiting = True
+
+                            if vic in self._robotFoundVictims and 'location' not in self._robotFoundVictimLocs[vic].keys():
+                                # Add the exact victim location to the corresponding dictionary
+                                self._robotFoundVictimLocs[vic] = {'location': info['location'],'room': self._door['room_name'], 'obj_id': info['obj_id']}
+                            if 'healthy' not in vic and vic not in self._robotFoundVictims:
+                                # Add the victim and the location to the corresponding dictionary
+                                self._robotFoundVictims.append(vic)
+                                self._robotFoundVictimLocs[vic] = {'location': info['location'],'room': self._door['room_name'], 'obj_id': info['obj_id']}
                     # Execute move actions to explore the area
                     return action, {}
 
@@ -520,6 +530,8 @@ class BaselineAgent(ArtificialBrain):
                 # Add the area to the list of searched areas
                 if self._door['room_name'] not in self._searchedRooms:
                     self._searchedRooms.append(self._door['room_name'])
+                if self._door['room_name'] not in self._robotSearchedRooms:
+                    self._robotSearchedRooms.append(self._door['room_name'])
                 # Make a plan to rescue a found critically injured victim if the human decides so
                 if self.received_messages_content and self.received_messages_content[-1] == 'Rescue' and 'critical' in self._recentVic:
                     self._rescue = 'together'
@@ -618,6 +630,8 @@ class BaselineAgent(ArtificialBrain):
                     self._waiting = False
                     if self._goalVic not in self._collectedVictims:
                         self._collectedVictims.append(self._goalVic)
+                    if self._goalVic not in self._robotCollectedVictims:
+                        self._robotCollectedVictims.append(self._goalVic)
                     self._carryingTogether = True
                     # Determine the next victim to rescue or search
                     self._phase = Phase.FIND_NEXT_GOAL
@@ -626,6 +640,8 @@ class BaselineAgent(ArtificialBrain):
                     self._phase = Phase.PLAN_PATH_TO_DROPPOINT
                     if self._goalVic not in self._collectedVictims:
                         self._collectedVictims.append(self._goalVic)
+                    if self._goalVic not in self._robotCollectedVictims:
+                        self._robotCollectedVictims.append(self._goalVic)
                     self._carrying = True
                     return CarryObject.__name__, {'object_id': self._foundVictimLocs[self._goalVic]['obj_id'], 'human_name':self._humanName}
 
@@ -802,6 +818,11 @@ class BaselineAgent(ArtificialBrain):
         '''
         Baseline implementation of a trust belief. Creates a dictionary with trust belief scores for each team member, for example based on the received messages.
         '''
+        print("====================================")
+        print(str(self._robotSearchedRooms))
+        print(str(self._robotFoundVictims))
+        print(str(self._robotCollectedVictims))
+        print(str(self._robotFoundVictimLocs))
         # Update the trust value based on new incoming messages
         for message in receivedMessages[self._processedMessages:]:
             print(message)
